@@ -1,0 +1,14 @@
+version: '2'
+services:
+  hello-ecs-app:
+    image: wordpress
+    cpu_shares: 100
+    mem_limit: 524288000
+    ports:
+      - "0:9460"
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: hello-ecs-cli
+        awslogs-region: ap-northeast-2
+        awslogs-stream-prefix: wordpress

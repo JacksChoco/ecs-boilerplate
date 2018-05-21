@@ -1,0 +1,58 @@
+language: java
+jdk: oraclejdk8
+
+sudo: required
+
+os:
+  - linux
+
+cache:
+  directories:
+    - .autoconf
+    - $HOME/.m2
+
+services:
+  - docker
+
+script:
+  # BUILD
+  - ./gradlew build
+
+  # GET NAME
+  - PRJ_GROUP=$(gradle properties -q | grep "group:" | awk '{print $2}')
+  - PRJ_NAME=$(gradle properties -q | grep "name:" | awk '{print $2}')
+  - PRJ_VERSION=$(gradle properties -q | grep "version:" | awk '{print $2}')
+
+  - echo "## PROJECT_GROUP - ${PRJ_GROUP}"
+  - echo "## PROJECT_NAME - ${PRJ_NAME}"
+  - echo "## PROJECT_VERSION - ${PRJ_VERSION}"
+
+  - PRJ_JAR=${PRJ_NAME}-${PRJ_VERSION}.jar
+
+  # DOCKER BUILD
+  - docker build -t ${PRJ_GROUP}.${PRJ_NAME}:latest --build-arg JAR_FILE=build/libs/${PRJ_JAR} ./
+
+  # PUSH TO DOCKER HUB
+  - docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}
+  - docker tag vw.demo.helloworld:latest voyagerwoo/vw.demo.helloworld:latest
+  - docker tag vw.demo.helloworld:latest voyagerwoo/vw.demo.helloworld:${TRAVIS_JOB_NUMBER}
+
+  - docker push voyagerwoo/vw.demo.helloworld:latest
+  - docker push voyagerwoo/vw.demo.helloworld:${TRAVIS_JOB_NUMBER}
+
+  # PUSH TO AWS REPOSITORY (required aws credentials)
+  - pip install --user awscli
+  - DOCKER_LOGIN=`aws ecr get-login --no-include-email --region ap-northeast-2`
+  - ${DOCKER_LOGIN}
+  - docker tag vw.demo.helloworld:latest ${ECS_DOCKER_REPOSITORY_DOMAIN}/hello-ecs:latest
+  - docker tag vw.demo.helloworld:latest ${ECS_DOCKER_REPOSITORY_DOMAIN}/hello-ecs:${TRAVIS_JOB_NUMBER}
+  - docker push ${ECS_DOCKER_REPOSITORY_DOMAIN}/hello-ecs:latest
+  - docker push ${ECS_DOCKER_REPOSITORY_DOMAIN}/hello-ecs:${TRAVIS_JOB_NUMBER}
+#
+#  # ECS CLI SERVICE UPDATE
+  - sudo curl -o /usr/local/bin/ecs-cli https://s3.amazonaws.com/amazon-ecs-cli/ecs-cli-linux-amd64-latest
+  - sudo chmod +x /usr/local/bin/ecs-cli
+  - ecs-cli configure profile --access-key ${AWS_ACCESS_KEY_ID} --secret-key ${AWS_SECRET_ACCESS_KEY} --profile-name  hello-ecs-cli
+
+  - ecs-cli compose --file hello-compose.yml --project-name hello-ecs-cli service up --cluster hello-ecs-cli
+
